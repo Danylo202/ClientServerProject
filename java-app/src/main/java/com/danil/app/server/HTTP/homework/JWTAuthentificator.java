@@ -17,11 +17,12 @@ public class JWTAuthentificator extends Authenticator {
 
         String token = authHeader.substring(7);
         String username = jwtService.decodeJwt(token);
+        String role = jwtService.decodeRole(token);
 
-        if (username == null) {
+        if (username == null || role == null) {
             return new Authenticator.Failure(403); 
         }
 
-        return new Authenticator.Success(new HttpPrincipal(username, "users"));
+        return new Authenticator.Success(new HttpPrincipal(username, role));
     }
 }

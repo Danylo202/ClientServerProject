@@ -55,9 +55,13 @@ public class ClientHandlerTCP implements Runnable {
                 System.arraycopy(part_1, 0, fullPacket, 0, 14);
                 System.arraycopy(crc_1, 0, fullPacket, 14, 2);
                 System.arraycopy(part_2, 0, fullPacket, 16, wLen + 2);
+
                 dataFlow.produce(new NetworkItem<>(fullPacket, socket, null, 0));
                 System.out.println("[Server] Пакет прийнято");
             }
+        }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         catch (Exception e) {
             System.err.println("[Server] Помилка: " + e.getMessage());

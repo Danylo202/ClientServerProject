@@ -29,11 +29,11 @@ public class SQLiteDb implements Db {
                 CREATE TABLE IF NOT EXISTS products (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
-                    category TEXT,
+                    category TEXT NOT NULL,
                     price REAL,
                     quantity INTEGER,
                     FOREIGN KEY (category) REFERENCES groups(name) 
-                    ON UPDATE CASCADE ON DELETE SET NULL
+                    ON UPDATE CASCADE ON DELETE RESTRICT
                 )
             """);
         }
@@ -106,9 +106,12 @@ public class SQLiteDb implements Db {
 
     @Override
     public void addGroup(String groupName) {
+        if (groupName == null || groupName.isBlank()) {
+            throw new RuntimeException("Назва категорії не може бути порожньою");
+        }
         String sql = "INSERT OR IGNORE INTO groups (name) VALUES (?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, groupName);
+            ps.setString(1, groupName.trim());
             ps.executeUpdate();
             System.out.println("[DB] Група створена: " + groupName);
         }
@@ -119,6 +122,7 @@ public class SQLiteDb implements Db {
 
     @Override
     public void addProductToGroup(String productName, String groupName) {
+        ensureGroupExists(groupName);
         // запит спрацює тільки якщо groupName існує в таблиці groups
         String sql = "UPDATE products SET category = ? WHERE name = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -130,12 +134,13 @@ public class SQLiteDb implements Db {
             }
         }
         catch (SQLException e) {
-            System.err.println("[DB] Помилка: Групи '" + groupName + "' не існує в базі!");
+            throw new RuntimeException("Не вдалося додати товар до групи '" + groupName + "'", e);
         }
     }
     
     @Override
     public int create(Product product) {
+        ensureGroupExists(product.getCategory());
         String sql = "INSERT OR IGNORE INTO products (name, category, price, quantity) VALUES (?, ?, ?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, product.getName());
@@ -206,6 +211,7 @@ public class SQLiteDb implements Db {
 
     @Override
     public void edit(Product product) {
+        ensureGroupExists(product.getCategory());
         String sql = "UPDATE products SET name=?, category=?, price=?, quantity=? WHERE id=?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, product.getName());
@@ -284,19 +290,20 @@ public class SQLiteDb implements Db {
     @Override
     public List<Product> search(String name, String category, Double minP, Double maxP, int page, int pageSize) {
         List<Product> list = new ArrayList<>();
-        // використовуємо LIKE для ігнорування null і LOWER на всяк випадок для регістрів
+        // ESCAPE потрібен, щоб символи '_' і '%' у введенні шукались як звичайний текст.
         String sql = """
                     SELECT * FROM products WHERE
-                    LOWER(name) LIKE LOWER(?) AND
-                    category LIKE ? AND
+                    LOWER(name) LIKE LOWER(?) ESCAPE '!' AND
+                    LOWER(COALESCE(category, '')) LIKE LOWER(?) ESCAPE '!' AND
                     price >= ? AND
                     price <= ?
+                    ORDER BY id ASC
                     LIMIT ? OFFSET ?
                 """;
                      
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, name == null ? "%" : "%" + name + "%");
-            ps.setString(2, category == null ? "%" : "%" + category + "%");
+            ps.setString(1, likePattern(name));
+            ps.setString(2, likePattern(category));
             ps.setDouble(3, minP == null ? 0 : minP);
             ps.setDouble(4, maxP == null ? Double.MAX_VALUE : maxP);
             ps.setInt(5, pageSize); // LIMIT - скільки рядків вивести
@@ -312,5 +319,118 @@ public class SQLiteDb implements Db {
             throw new RuntimeException("Не вдалося знайти такий товар", e);
         }
         return list;
+    }
+
+    @Override
+    public List<String> getGroups() {
+        List<String> groups = new ArrayList<>();
+        String sql = "SELECT name FROM groups ORDER BY name ASC";
+        try (PreparedStatement ps = connection.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                groups.add(rs.getString("name"));
+            }
+        }
+        catch (SQLException e) {
+            throw new RuntimeException("Не вдалося отримати список категорій", e);
+        }
+        return groups;
+    }
+
+    @Override
+    public void deleteGroup(String groupName) {
+        ensureGroupExists(groupName);
+        int productCount = getCategoryProductCount(groupName);
+        if (productCount > 0) {
+            throw new RuntimeException("Категорію '" + groupName + "' не можна видалити: у ній є товари (" + productCount + ")");
+        }
+
+        String sql = "DELETE FROM groups WHERE name = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, groupName);
+            ps.executeUpdate();
+        }
+        catch (SQLException e) {
+            throw new RuntimeException("Не вдалося видалити категорію '" + groupName + "'", e);
+        }
+    }
+
+    @Override
+    public void renameGroup(String oldName, String newName) {
+        ensureGroupExists(oldName);
+        if (newName == null || newName.isBlank()) {
+            throw new RuntimeException("Нова назва категорії не може бути порожньою");
+        }
+
+        String sql = "UPDATE groups SET name = ? WHERE name = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, newName.trim());
+            ps.setString(2, oldName);
+            ps.executeUpdate();
+        }
+        catch (SQLException e) {
+            throw new RuntimeException("Не вдалося перейменувати категорію '" + oldName + "'", e);
+        }
+    }
+
+    @Override
+    public int getCategoryProductCount(String groupName) {
+        String sql = "SELECT COUNT(*) FROM products WHERE category = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, groupName);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+        catch (SQLException e) {
+            throw new RuntimeException("Не вдалося порахувати товари категорії '" + groupName + "'", e);
+        }
+    }
+
+    @Override
+    public double getCategoryAveragePrice(String groupName) {
+        String sql = "SELECT COALESCE(AVG(price), 0) FROM products WHERE category = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, groupName);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getDouble(1) : 0.0;
+            }
+        }
+        catch (SQLException e) {
+            throw new RuntimeException("Не вдалося порахувати середню ціну категорії '" + groupName + "'", e);
+        }
+    }
+
+    private static String likePattern(String value) {
+        if (value == null || value.isBlank()) {
+            return "%";
+        }
+        return "%" + escapeLike(value.trim()) + "%";
+    }
+
+    private static String escapeLike(String value) {
+        return value
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+    }
+
+    private void ensureGroupExists(String groupName) {
+        if (groupName == null || groupName.isBlank()) {
+            throw new RuntimeException("Категорія товару не може бути порожньою");
+        }
+
+        String sql = "SELECT 1 FROM groups WHERE name = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, groupName.trim());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("Категорії '" + groupName + "' не існує. Спочатку створіть її у таблиці категорій.");
+                }
+            }
+        }
+        catch (SQLException e) {
+            throw new RuntimeException("Не вдалося перевірити категорію '" + groupName + "'", e);
+        }
     }
 }

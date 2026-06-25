@@ -19,4 +19,9 @@ public interface Db {
     void delete(int id);
     void delete(String name);
     List<Product> search(String name, String cat, Double minP, Double maxP, int page, int size);
+    List<String> getGroups();
+    void deleteGroup(String groupName);
+    void renameGroup(String oldName, String newName);
+    int getCategoryProductCount(String groupName);
+    double getCategoryAveragePrice(String groupName);
 }
