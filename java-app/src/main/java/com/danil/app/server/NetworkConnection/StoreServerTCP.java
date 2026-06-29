@@ -17,7 +17,7 @@ import java.net.Socket;
 import java.util.concurrent.Executors;
 
 public class StoreServerTCP {
-    public static final int PORT = 8081;
+    public static final int PORT = 8082;
     public static String DB_NAME = "jdbc:sqlite:mystore.db";
 
     public static void main(String[] args) throws IOException {

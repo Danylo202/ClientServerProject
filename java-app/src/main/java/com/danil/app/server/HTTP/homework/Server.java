@@ -12,7 +12,7 @@ import java.net.BindException;
 import java.net.InetSocketAddress;
 
 public class Server {
-    public static final int PORT = 8181;
+    public static final int PORT = 8182;
     private static final String DB_NAME = "jdbc:sqlite:mystore.db";
 
     public static HttpServer create(Db db, SQLiteUserDao userDao) throws IOException {

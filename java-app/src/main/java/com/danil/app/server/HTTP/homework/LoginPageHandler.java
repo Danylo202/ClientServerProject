@@ -131,6 +131,13 @@ public class LoginPageHandler implements HttpHandler {
                             <button id="clearCreateProductBtn" class="secondary">Очистити</button>
                           </div>
                         </div>
+                        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+                          <h3 style="margin:0 0 10px;font-size:15px">Швидко створити категорію</h3>
+                          <div class="form-grid" style="grid-template-columns:2fr auto">
+                            <div><label>Нова категорія</label><input id="quickCategoryName" placeholder="Наприклад: Electronics"></div>
+                            <div class="actions"><button id="quickCategoryBtn" class="secondary">Створити категорію</button></div>
+                          </div>
+                        </div>
                       </div>
 
                       <div id="productEditCard" class="card admin-only hidden">

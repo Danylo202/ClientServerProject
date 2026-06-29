@@ -41,14 +41,14 @@ public class CategoryHandler implements HttpHandler {
             }
             else if ("PUT".equals(method)) {
                 requireAdmin(exchange);
-                CategoryRequest request = mapper.readValue(exchange.getRequestBody(), CategoryRequest.class);
-                gateway.createCategory(request.name());
+                Map<String, String> request = mapper.readValue(exchange.getRequestBody(), Map.class);
+                gateway.createCategory(request.get("name"));
                 responseBody = Map.of("message", "Created");
             }
             else if ("POST".equals(method)) {
                 requireAdmin(exchange);
-                RenameCategoryRequest request = mapper.readValue(exchange.getRequestBody(), RenameCategoryRequest.class);
-                gateway.renameCategory(request.oldName(), request.newName());
+                Map<String, String> request = mapper.readValue(exchange.getRequestBody(), Map.class);
+                gateway.renameCategory(request.get("oldName"), request.get("newName"));
                 responseBody = Map.of("message", "Updated");
             }
             else if ("DELETE".equals(method)) {
@@ -102,11 +102,5 @@ public class CategoryHandler implements HttpHandler {
 
     private String decode(String value) {
         return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
-    }
-
-    private record CategoryRequest(String name) {
-    }
-
-    private record RenameCategoryRequest(String oldName, String newName) {
     }
 }
